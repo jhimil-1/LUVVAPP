@@ -1,0 +1,32 @@
+# requirements.txt
+
+# FastAPI and server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+motor  # Async MongoDB driver
+pymongo
+
+# OpenAI
+openai
+
+# Utilities
+pydantic
+python-dotenv
+email-validator
+
+# Optional but recommended
+httpx  
+aiofiles  
+# streamlit_requirements.txt
+# Requirements for the Streamlit frontend
+
+streamlit
+requests
+python-dotenv
+
+# Optional but recommended
+pandas  # For data visualization if needed
+plotly # For interactive charts

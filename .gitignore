@@ -1,0 +1,101 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Type checkers / linters
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files (keep only example tracked)
+.env
+.env.*
+!.env.example
+
+# Streamlit
+.streamlit/
+!.streamlit/config.toml
+# Do NOT commit secrets
+.streamlit/secrets.toml
+
+# Node (if present)
+node_modules/
+
+# Mongo dump/output (if any)
+dump/
+
+# Uvicorn / run artifacts
+*.pid
+
+# Local data
+/data/
+*.sqlite3
+
+# Images/artifacts
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
