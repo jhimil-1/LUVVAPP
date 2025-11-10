@@ -10,6 +10,7 @@ const App = () => {
   const [relationships, setRelationships] = useState([]);
   const [selectedRelationship, setSelectedRelationship] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [sessionId, setSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,6 +21,7 @@ const App = () => {
     if (userId) {
       loadUserProfile();
       loadRelationships();
+      loadSessions();
     }
   }, [userId]);
 
@@ -29,6 +31,27 @@ const App = () => {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const openSession = async (s) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/${s.session_id}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setSessionId(s.session_id);
+        // If session has partner context, reflect it in UI
+        if (data.partner_profile) {
+          setSelectedRelationship({ relationship_type: data.relationship_type || 'general', partner_profile: data.partner_profile });
+        } else {
+          setSelectedRelationship(null);
+        }
+        setMessages((data.messages || []).map(m => ({ role: m.role, content: m.content })));
+        setCurrentView('chat');
+        setSidebarOpen(false);
+      }
+    } catch (e) {
+      console.error('Error opening session:', e);
+    }
   };
 
   const loadUserProfile = async () => {
@@ -52,6 +75,19 @@ const App = () => {
       }
     } catch (error) {
       console.error('Error loading relationships:', error);
+    }
+  };
+
+  const loadSessions = async () => {
+    try {
+      if (!userId) return;
+      const response = await fetch(`${API_BASE_URL}/api/sessions/${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSessions(data.sessions || []);
+      }
+    } catch (error) {
+      console.error('Error loading sessions:', error);
     }
   };
 
@@ -169,6 +205,9 @@ const App = () => {
                   key={idx}
                   onClick={() => {
                     setSelectedRelationship(rel);
+                    // start a new session for this partner context
+                    setSessionId(null);
+                    setMessages([]);
                     setCurrentView('chat');
                     setSidebarOpen(false);
                   }}
@@ -189,6 +228,49 @@ const App = () => {
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Previous Chats */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">Previous Chats</h3>
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm font-medium text-gray-600 mb-2">General</div>
+                <div className="space-y-2">
+                  {sessions.filter(s => (s.context_type ?? 'general') === 'general').map((s) => (
+                    <button key={s.session_id}
+                      onClick={() => openSession(s)}
+                      className="w-full p-3 rounded-lg text-left bg-white border hover:shadow-sm transition"
+                    >
+                      <div className="text-sm text-gray-800">Session {s.session_id.slice(-6)}</div>
+                      <div className="text-xs text-gray-500">{new Date(s.updated_at).toLocaleString()}</div>
+                    </button>
+                  ))}
+                  {sessions.filter(s => (s.context_type ?? 'general') === 'general').length === 0 && (
+                    <div className="text-xs text-gray-400">No general chats yet</div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-600 mb-2">Partner</div>
+                <div className="space-y-2">
+                  {sessions.filter(s => s.context_type === 'partner').map((s) => (
+                    <button key={s.session_id}
+                      onClick={() => openSession(s)}
+                      className="w-full p-3 rounded-lg text-left bg-white border hover:shadow-sm transition"
+                    >
+                      <div className="text-sm text-gray-800">
+                        {(s.partner_profile?.name || 'Unknown')} ({s.relationship_type || 'partner'})
+                      </div>
+                      <div className="text-xs text-gray-500">{new Date(s.updated_at).toLocaleString()}</div>
+                    </button>
+                  ))}
+                  {sessions.filter(s => s.context_type === 'partner').length === 0 && (
+                    <div className="text-xs text-gray-400">No partner chats yet</div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

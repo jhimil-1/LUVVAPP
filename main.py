@@ -238,10 +238,13 @@ async def chat(request: ChatRequest, db=Depends(get_database)):
         else:
             # Create new session
             session_id = str(ObjectId())
+            context_type = "partner" if (request.partner_profile is not None and request.relationship_type != "general") else "general"
             session = {
                 "session_id": session_id,
                 "user_id": request.user_id,
                 "relationship_type": request.relationship_type,
+                "context_type": context_type,
+                "partner_profile": request.partner_profile.dict() if request.partner_profile else None,
                 "messages": [],
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
@@ -286,6 +289,11 @@ async def chat(request: ChatRequest, db=Depends(get_database)):
         # Update session in database
         if "messages" not in session:
             session["messages"] = []
+        # Keep relationship/context fresh
+        session["relationship_type"] = request.relationship_type
+        session["context_type"] = "partner" if (request.partner_profile is not None and request.relationship_type != "general") else session.get("context_type", "general")
+        if request.partner_profile:
+            session["partner_profile"] = request.partner_profile.dict()
         
         session["messages"].append({
             "role": "user",
