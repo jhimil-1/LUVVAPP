@@ -10,6 +10,13 @@ const App = () => {
   const [relationships, setRelationships] = useState([]);
   const [selectedRelationship, setSelectedRelationship] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [adviceOpen, setAdviceOpen] = useState(false);
+  const [adviceTopic, setAdviceTopic] = useState('Communication');
+  const [adviceSituation, setAdviceSituation] = useState('');
+  const [advicePartner, setAdvicePartner] = useState(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceList, setAdviceList] = useState([]);
+  const [selectedAdvice, setSelectedAdvice] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [sessionId, setSessionId] = useState(null);
@@ -22,7 +29,9 @@ const App = () => {
       loadUserProfile();
       loadRelationships();
       loadSessions();
+      loadAdviceList();
     }
+    loadSessions();
   }, [userId]);
 
   useEffect(() => {
@@ -75,6 +84,19 @@ const App = () => {
       }
     } catch (error) {
       console.error('Error loading relationships:', error);
+    }
+  };
+
+  const loadAdviceList = async () => {
+    try {
+      if (!userId) return;
+      const res = await fetch(`${API_BASE_URL}/api/advice/${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAdviceList(data.advice || []);
+      }
+    } catch (e) {
+      console.error('Error loading advice list:', e);
     }
   };
 
@@ -149,6 +171,64 @@ const App = () => {
     }
   };
 
+  const submitAdvice = async () => {
+    if (!adviceTopic || !adviceSituation.trim()) return;
+    setAdviceLoading(true);
+    try {
+      const payload = {
+        user_id: userId,
+        topic: adviceTopic,
+        situation: adviceSituation.slice(0, 1000),
+        partner_profile: advicePartner ? advicePartner.partner_profile : undefined,
+        self_assessment: userProfile?.self_assessment
+      };
+      const res = await fetch(`${API_BASE_URL}/api/advice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedAdvice({ advice_id: data.advice_id, topic: data.topic, content: data.content, created_at: data.created_at });
+        setAdviceOpen(false);
+        setAdviceSituation('');
+        setAdvicePartner(null);
+        loadAdviceList();
+      }
+    } catch (e) {
+      console.error('Advice request failed:', e);
+    } finally {
+      setAdviceLoading(false);
+    }
+  };
+
+  const openAdvice = async (item) => {
+    try {
+      if (!item?.advice_id) return;
+      const res = await fetch(`${API_BASE_URL}/api/advice/item/${item.advice_id}`);
+      if (res.ok) {
+        const full = await res.json();
+        setSelectedAdvice(full);
+        setCurrentView('chat');
+        setSidebarOpen(false);
+      }
+    } catch (e) {
+      console.error('Failed to open advice:', e);
+    }
+  };
+
+  const deleteAdvice = async (advice_id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/advice/${advice_id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setAdviceList(prev => prev.filter(a => a.advice_id !== advice_id));
+        if (selectedAdvice?.advice_id === advice_id) setSelectedAdvice(null);
+      }
+    } catch (e) {
+      console.error('Failed to delete advice:', e);
+    }
+  };
+
   if (!userId || !userProfile) {
     return <OnboardingScreen onComplete={createUser} />;
   }
@@ -192,7 +272,8 @@ const App = () => {
                 Relationships
               </h3>
               <button
-                onClick={() => setCurrentView('addRelationship')}
+                onClick={() => setCurrentView('addPartner')}
+                title="Add Partner"
                 className="p-2 hover:bg-pink-50 rounded-lg transition-colors"
               >
                 <Plus className="w-5 h-5 text-pink-500" />
@@ -274,6 +355,30 @@ const App = () => {
             </div>
           </div>
 
+          {/* Advice History */}
+          <div className="mt-8">
+            <h3 className="text-sm font-semibold text-gray-600 mb-3">Advice History</h3>
+            <div className="space-y-2">
+              {adviceList.map((a) => (
+                <div key={a.advice_id} className="bg-white border rounded-lg p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-800">{a.topic}</div>
+                      <div className="text-xs text-gray-500 truncate">{a.preview}</div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => openAdvice(a)} className="text-pink-600 text-xs hover:underline">Open</button>
+                      <button onClick={() => deleteAdvice(a.advice_id)} className="text-gray-500 text-xs hover:underline">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {adviceList.length === 0 && (
+                <div className="text-xs text-gray-400">No advice yet</div>
+              )}
+            </div>
+          </div>
+
           {/* Quick Actions */}
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-gray-600 mb-3">Quick Actions</h3>
@@ -321,6 +426,63 @@ const App = () => {
                       <p className="text-sm text-gray-600 capitalize">{selectedRelationship.relationship_type} • {selectedRelationship.partner_profile?.love_language || 'N/A'}</p>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Advice controls */}
+              <div className="bg-white/80 backdrop-blur-md border-b border-pink-100 p-4 flex items-center justify-between">
+                <div className="text-sm text-gray-600">Session: <span className="text-gray-800">{sessionId ? sessionId.slice(-6) : '—'}</span></div>
+                <button onClick={()=>setAdviceOpen(true)} className="px-4 py-2 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm hover:shadow">
+                  Get Relationship Advice
+                </button>
+              </div>
+
+              {adviceOpen && (
+                <div className="p-4 border-b bg-white">
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Topic</label>
+                      <select value={adviceTopic} onChange={e=>setAdviceTopic(e.target.value)} className="w-full p-2 border rounded-lg">
+                        {['Communication','Romance','Conflict Resolution','Trust','Intimacy','Family','Friendship','Self-growth'].map(t=> (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs text-gray-600 mb-1">Reference Partner (optional)</label>
+                      <select value={advicePartner? (advicePartner.partner_profile?.name||'') : ''} onChange={e=>{
+                        const rel = relationships.find(r => (r.partner_profile?.name||'')===e.target.value);
+                        setAdvicePartner(rel||null);
+                      }} className="w-full p-2 border rounded-lg">
+                        <option value="">No partner</option>
+                        {relationships.map((r,i)=> (
+                          <option key={i} value={r.partner_profile?.name||''}>{r.partner_profile?.name||'Unknown'} ({r.relationship_type})</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <label className="block text-xs text-gray-600 mb-1">Describe your situation (max 1000 chars)</label>
+                    <textarea value={adviceSituation} onChange={e=>setAdviceSituation(e.target.value.slice(0,1000))} rows={4} className="w-full p-3 border rounded-lg" placeholder="Describe what's going on..."/>
+                    <div className="text-xs text-gray-400 mt-1">{adviceSituation.length}/1000</div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button onClick={submitAdvice} disabled={adviceLoading || !adviceSituation.trim()} className="px-4 py-2 rounded-lg bg-pink-600 text-white disabled:opacity-50">{adviceLoading? 'Requesting...' : 'Get Advice'}</button>
+                    <button onClick={()=>{ setAdviceOpen(false); }} className="px-4 py-2 rounded-lg border">Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {selectedAdvice && (
+                <div className="p-4 bg-gradient-to-br from-pink-50 to-purple-50 border-b">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">Advice • {selectedAdvice.topic}</div>
+                      <div className="text-xs text-gray-500">{new Date(selectedAdvice.created_at).toLocaleString()}</div>
+                    </div>
+                    <button onClick={()=>setSelectedAdvice(null)} className="text-xs text-gray-500 hover:underline">Close</button>
+                  </div>
+                  <div className="mt-3 p-4 bg-white rounded-lg border whitespace-pre-wrap text-gray-800">{selectedAdvice.content}</div>
                 </div>
               )}
 
@@ -403,6 +565,15 @@ const App = () => {
                 </div>
               </div>
             </>
+          ) : currentView === 'addPartner' ? (
+            <AddPartnerProfileWizard
+              userId={userId}
+              onCancel={() => setCurrentView('settings')}
+              onSaved={() => {
+                loadRelationships();
+                setCurrentView('settings');
+              }}
+            />
           ) : currentView === 'addRelationship' ? (
             <AddRelationshipView
               userId={userId}
@@ -413,7 +584,7 @@ const App = () => {
               }}
             />
           ) : (
-            <SettingsView userProfile={userProfile} onBack={() => setCurrentView('chat')} />
+            <SettingsView userProfile={userProfile} onBack={() => setCurrentView('chat')} onAddPartner={() => setCurrentView('addPartner')} />
           )}
         </main>
       </div>
@@ -581,7 +752,7 @@ const AddRelationshipView = ({ userId, onBack, onSuccess }) => {
       <button onClick={onBack} className="mb-6 text-pink-600 hover:text-pink-700 font-medium">
         ← Back
       </button>
-      <h2 className="text-3xl font-bold text-gray-800 mb-8">Add a Relationship</h2>
+      <h2 className="text-3xl font-bold text-gray-800 mb-8">Add Partner</h2>
       
       <div className="space-y-6">
         <div>
@@ -653,20 +824,23 @@ const AddRelationshipView = ({ userId, onBack, onSuccess }) => {
           disabled={!formData.name}
           className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50"
         >
-          Add Relationship
+          Add Partner
         </button>
       </div>
     </div>
   );
 };
 
-const SettingsView = ({ userProfile, onBack }) => {
+const SettingsView = ({ userProfile, onBack, onAddPartner }) => {
   return (
     <div className="p-8 max-w-2xl mx-auto">
       <button onClick={onBack} className="mb-6 text-pink-600 hover:text-pink-700 font-medium">
         ← Back
       </button>
-      <h2 className="text-3xl font-bold text-gray-800 mb-8">Settings</h2>
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-3xl font-bold text-gray-800">Settings</h2>
+        <button onClick={onAddPartner} className="px-4 py-2 rounded-lg text-sm bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:shadow">Add Partner Profile</button>
+      </div>
       
       <div className="space-y-6">
         <div className="bg-white rounded-2xl p-6 shadow-md">
@@ -704,5 +878,181 @@ const SettingsView = ({ userProfile, onBack }) => {
     </div>
   );
 };
+
+function AddPartnerProfileWizard({ userId, onCancel, onSaved }){
+  const [step, setStep] = useState(1);
+  const total = 3;
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    // Step 1 (mandatory)
+    name: '',
+    birthday: '',
+    relationship_status: 'romantic',
+    // Step 2 (optional)
+    anniversary_dates: '', // comma-separated
+    love_language: '',
+    zodiac_sign: '',
+    music_preferences: '',
+    religious_beliefs: '',
+    ideal_vacations: '',
+    hobbies: '',
+    fashion_preferences: '',
+    dietary_restrictions: '',
+  });
+
+  const next = () => {
+    if (step === 1) {
+      if (!form.name.trim() || !form.birthday || !form.relationship_status) return;
+    }
+    setStep(Math.min(step+1, total));
+  };
+  const prev = () => setStep(Math.max(step-1, 1));
+
+  const submit = async () => {
+    try {
+      setSaving(true);
+      const relationship_type = form.relationship_status; // map directly
+      const partner_profile = {
+        name: form.name,
+        love_language: form.love_language || undefined,
+        interests: form.hobbies ? form.hobbies.split(',').map(s=>s.trim()).filter(Boolean) : undefined,
+        preferences: {
+          birthday: form.birthday,
+          anniversary_dates: form.anniversary_dates ? form.anniversary_dates.split(',').map(s=>s.trim()).filter(Boolean) : [],
+          zodiac_sign: form.zodiac_sign || undefined,
+          music_preferences: form.music_preferences || undefined,
+          religious_beliefs: form.religious_beliefs || undefined,
+          ideal_vacations: form.ideal_vacations || undefined,
+          fashion_preferences: form.fashion_preferences || undefined,
+          dietary_restrictions: form.dietary_restrictions || undefined,
+        }
+      };
+      const res = await fetch(`${API_BASE_URL}/api/relationships`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, relationship_type, partner_profile })
+      });
+      if (res.ok) {
+        onSaved();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="p-8 max-w-3xl mx-auto">
+      <div className="flex items-center justify-between">
+        <button onClick={onCancel} className="text-pink-600 hover:text-pink-700 font-medium">← Cancel</button>
+        <div className="text-sm text-gray-600">Step {step} of {total}</div>
+      </div>
+
+      <div className="mt-4 h-2 bg-pink-100 rounded">
+        <div className="h-2 bg-gradient-to-r from-pink-500 to-purple-600 rounded" style={{width: `${(step/total)*100}%`}} />
+      </div>
+
+      {step === 1 && (
+        <div className="mt-8 space-y-6">
+          <h3 className="text-xl font-semibold text-gray-800">Basic Information</h3>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Name<span className="text-red-500">*</span></label>
+            <input value={form.name} onChange={e=>setForm({...form, name: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" placeholder="Partner name" />
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Birthday<span className="text-red-500">*</span></label>
+              <input type="date" value={form.birthday} onChange={e=>setForm({...form, birthday: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Relationship status<span className="text-red-500">*</span></label>
+              <select value={form.relationship_status} onChange={e=>setForm({...form, relationship_status: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none">
+                <option value="romantic">Romantic</option>
+                <option value="friendship">Friendship</option>
+                <option value="family">Family</option>
+                <option value="self-growth">Self-Growth</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onCancel} className="flex-1 py-3 border-2 border-pink-300 text-pink-600 rounded-xl font-medium hover:bg-pink-50">Cancel</button>
+            <button onClick={next} className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium">Save & Continue</button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="mt-8 space-y-6">
+          <h3 className="text-xl font-semibold text-gray-800">More About Them (optional)</h3>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Anniversary / Important dates</label>
+              <input value={form.anniversary_dates} onChange={e=>setForm({...form, anniversary_dates: e.target.value})} placeholder="e.g., 2023-02-14, 2023-05-10" className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Love language</label>
+              <input value={form.love_language} onChange={e=>setForm({...form, love_language: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" placeholder="e.g., Quality Time" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Zodiac sign</label>
+              <input value={form.zodiac_sign} onChange={e=>setForm({...form, zodiac_sign: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Music preferences</label>
+              <input value={form.music_preferences} onChange={e=>setForm({...form, music_preferences: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Religious beliefs</label>
+              <input value={form.religious_beliefs} onChange={e=>setForm({...form, religious_beliefs: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Ideal vacation types</label>
+              <input value={form.ideal_vacations} onChange={e=>setForm({...form, ideal_vacations: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" placeholder="e.g., Beach, Mountains" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Hobbies and interests</label>
+              <input value={form.hobbies} onChange={e=>setForm({...form, hobbies: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" placeholder="Comma-separated" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Fashion preferences</label>
+              <input value={form.fashion_preferences} onChange={e=>setForm({...form, fashion_preferences: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Dietary restrictions</label>
+              <input value={form.dietary_restrictions} onChange={e=>setForm({...form, dietary_restrictions: e.target.value})} className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none" />
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={prev} className="flex-1 py-3 border-2 border-pink-300 text-pink-600 rounded-xl font-medium hover:bg-pink-50">Back</button>
+            <button onClick={next} className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium">Save & Continue</button>
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="mt-8 space-y-6">
+          <h3 className="text-xl font-semibold text-gray-800">Review</h3>
+          <div className="bg-white rounded-xl border p-4 grid md:grid-cols-2 gap-3 text-sm text-gray-700">
+            <div><span className="font-medium">Name:</span> {form.name}</div>
+            <div><span className="font-medium">Birthday:</span> {form.birthday}</div>
+            <div><span className="font-medium">Relationship status:</span> {form.relationship_status}</div>
+            <div><span className="font-medium">Love language:</span> {form.love_language || '—'}</div>
+            <div><span className="font-medium">Zodiac sign:</span> {form.zodiac_sign || '—'}</div>
+            <div><span className="font-medium">Music:</span> {form.music_preferences || '—'}</div>
+            <div><span className="font-medium">Religious beliefs:</span> {form.religious_beliefs || '—'}</div>
+            <div><span className="font-medium">Ideal vacations:</span> {form.ideal_vacations || '—'}</div>
+            <div className="md:col-span-2"><span className="font-medium">Hobbies:</span> {form.hobbies || '—'}</div>
+            <div><span className="font-medium">Fashion preferences:</span> {form.fashion_preferences || '—'}</div>
+            <div><span className="font-medium">Dietary restrictions:</span> {form.dietary_restrictions || '—'}</div>
+            <div className="md:col-span-2"><span className="font-medium">Anniversary dates:</span> {form.anniversary_dates || '—'}</div>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={prev} className="flex-1 py-3 border-2 border-pink-300 text-pink-600 rounded-xl font-medium hover:bg-pink-50">Back</button>
+            <button onClick={submit} disabled={saving} className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium disabled:opacity-50">{saving? 'Saving…' : 'Save Profile'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default App;

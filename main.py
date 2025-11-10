@@ -126,6 +126,19 @@ class RelationshipProfile(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class AdviceRequest(BaseModel):
+    user_id: str
+    topic: str
+    situation: str
+    partner_profile: Optional[PartnerProfile] = None
+    self_assessment: Optional[SelfAssessment] = None
+
+class AdviceResponse(BaseModel):
+    advice_id: str
+    topic: str
+    content: str
+    created_at: datetime
+
 # ======================
 # System Prompt Builder
 # ======================
@@ -453,6 +466,91 @@ async def delete_session(session_id: str, db=Depends(get_database)):
         raise HTTPException(status_code=404, detail="Session not found")
     
     return {"message": "Session deleted successfully"}
+
+@app.post("/api/advice", response_model=AdviceResponse)
+async def create_advice(request: AdviceRequest, db=Depends(get_database)):
+    api_key = os.getenv("OPENAI_API_KEY") or OPENAI_API_KEY
+    if not api_key:
+        raise HTTPException(status_code=503, detail="OpenAI API key not configured. Set the OPENAI_API_KEY environment variable and restart the server.")
+    client = AsyncOpenAI(api_key=api_key)
+    advice_collection = db.advice
+
+    system = build_system_prompt(
+        relationship_type=("general" if request.partner_profile is None else "partner"),
+        partner_profile=request.partner_profile,
+        self_assessment=request.self_assessment
+    )
+    user = (
+        f"Topic: {request.topic}\n\n"
+        f"Situation: {request.situation}\n\n"
+        "Provide a concise, step-by-step, actionable plan the user can apply now. "
+        "Structure the response with short sections: Summary, Why it helps, 3-6 Action Steps, Gentle Check-ins, and Conversation Prompts. "
+        "Keep it supportive and specific."
+    )
+
+    try:
+        completion = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=0.7,
+            max_tokens=600,
+        )
+        content = completion.choices[0].message.content
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Advice generation failed: {str(e)}")
+
+    advice_id = str(ObjectId())
+    record = {
+        "advice_id": advice_id,
+        "user_id": request.user_id,
+        "topic": request.topic,
+        "situation": request.situation,
+        "content": content,
+        "partner_profile": request.partner_profile.dict() if request.partner_profile else None,
+        "created_at": datetime.utcnow(),
+    }
+    await advice_collection.insert_one(record)
+
+    return AdviceResponse(
+        advice_id=advice_id,
+        topic=request.topic,
+        content=content,
+        created_at=record["created_at"],
+    )
+
+
+@app.get("/api/advice/{user_id}")
+async def list_advice(user_id: str, db=Depends(get_database)):
+    advice_collection = db.advice
+    items = await advice_collection.find(
+        {"user_id": user_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(length=100)
+    for it in items:
+        text = it.get("content", "") or ""
+        it["preview"] = (text[:180] + ("…" if len(text) > 180 else ""))
+    return {"advice": items}
+
+
+@app.get("/api/advice/item/{advice_id}")
+async def get_advice(advice_id: str, db=Depends(get_database)):
+    advice_collection = db.advice
+    item = await advice_collection.find_one({"advice_id": advice_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Advice not found")
+    return item
+
+
+@app.delete("/api/advice/{advice_id}")
+async def delete_advice(advice_id: str, db=Depends(get_database)):
+    advice_collection = db.advice
+    res = await advice_collection.delete_one({"advice_id": advice_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Advice not found")
+    return {"message": "Advice deleted"}
 
 # ======================
 # Run with: uvicorn main:app --reload
