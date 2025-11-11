@@ -40,7 +40,6 @@ const App = () => {
     interests: '',
     personalityType: ''
   });
-  const editingRelationshipRef = useRef(null);
 
   // Auth UI state
   const [authMode, setAuthMode] = useState('signup'); // 'signup' | 'login'
@@ -158,12 +157,7 @@ const App = () => {
       const response = await fetch(`${API_BASE_URL}/api/relationships/${userId}`);
       if (response.ok) {
         const data = await response.json();
-        // Normalize: ensure every item has a stable id and relationship_id
-        const normalized = (data.relationships || []).map((rel) => {
-          const id = rel.relationship_id || rel.id || crypto.randomUUID();
-          return { ...rel, relationship_id: id, id };
-        });
-        setRelationships(normalized);
+        setRelationships(data.relationships || []);
       }
     } catch (error) {
       console.error('Error loading relationships:', error);
@@ -180,112 +174,6 @@ const App = () => {
       }
     } catch (e) {
       console.error('Error loading advice list:', e);
-    }
-  };
-
-  const startEditRelationship = (relationship) => {
-    console.log('Starting edit for relationship:', relationship);
-    setEditingRelationship(relationship);
-    editingRelationshipRef.current = relationship; // Store in ref for async operations
-    setEditFormData({
-      name: relationship.partner_profile?.name || '',
-      loveLanguage: relationship.partner_profile?.love_language || '',
-      interests: relationship.partner_profile?.interests?.join(', ') || '',
-      personalityType: relationship.partner_profile?.personality_type || '',
-      birthday: relationship.partner_profile?.preferences?.birthday || '',
-      zodiacSign: relationship.partner_profile?.preferences?.zodiac_sign || '',
-      musicPreferences: relationship.partner_profile?.preferences?.music_preferences || '',
-      religiousBeliefs: relationship.partner_profile?.preferences?.religious_beliefs || '',
-      idealVacations: relationship.partner_profile?.preferences?.ideal_vacations || '',
-      fashionPreferences: relationship.partner_profile?.preferences?.fashion_preferences || '',
-      dietaryRestrictions: relationship.partner_profile?.preferences?.dietary_restrictions || ''
-    });
-  };
-
-  const saveEditRelationship = async () => {
-    const relationshipToEdit = editingRelationship || editingRelationshipRef.current;
-    if (!relationshipToEdit || !userId) {
-      console.error('Cannot save: editingRelationship or userId is missing', { relationshipToEdit, userId, editingRelationship, ref: editingRelationshipRef.current });
-      return;
-    }
-    
-    // Robust id: prefer relationship_id, fallback to id, guard against null
-    const rid = relationshipToEdit.relationship_id || relationshipToEdit.id;
-    if (!rid) {
-      console.error('Cannot save: no relationship id found', relationshipToEdit);
-      return;
-    }
-    
-    console.log('Saving relationship:', relationshipToEdit);
-    
-    try {
-      const updatedProfile = {
-        ...relationshipToEdit.partner_profile,
-        name: editFormData.name,
-        love_language: editFormData.loveLanguage || undefined,
-        interests: editFormData.interests ? editFormData.interests.split(',').map(i => i.trim()).filter(Boolean) : undefined,
-        personality_type: editFormData.personalityType || undefined,
-        preferences: {
-          ...relationshipToEdit.partner_profile?.preferences,
-          birthday: editFormData.birthday || undefined,
-          zodiac_sign: editFormData.zodiacSign || undefined,
-          music_preferences: editFormData.musicPreferences || undefined,
-          religious_beliefs: editFormData.religiousBeliefs || undefined,
-          ideal_vacations: editFormData.idealVacations || undefined,
-          fashion_preferences: editFormData.fashionPreferences || undefined,
-          dietary_restrictions: editFormData.dietaryRestrictions || undefined
-        }
-      };
-
-      const response = await fetch(`${API_BASE_URL}/api/relationships/${rid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          relationship_id: rid,        // ← required by backend
-          user_id: userId,
-          relationship_type: relationshipToEdit.relationship_type,
-          partner_profile: updatedProfile
-        })
-      });
-
-      if (response.ok) {
-        setEditingRelationship(null);
-        editingRelationshipRef.current = null; // Clear the ref
-        await loadRelationships();
-      } else {
-        console.error('Failed to update relationship');
-      }
-    } catch (error) {
-      console.error('Error updating relationship:', error);
-    }
-  };
-
-  const deleteRelationship = async (relationship) => {
-    // Robust id: prefer relationship_id, fallback to id, guard against null
-    const rid = relationship?.relationship_id || relationship?.id;
-    if (!rid || !userId) return;
-    
-    if (!window.confirm(`Are you sure you want to delete ${relationship.partner_profile?.name}?`)) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/relationships/${rid}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId })
-      });
-
-      if (response.ok) {
-        if (selectedRelationship?.relationship_id === rid || selectedRelationship?.id === rid) {
-          setSelectedRelationship(null);
-        }
-        await loadRelationships();
-      } else {
-        console.error('Failed to delete relationship');
-      }
-    } catch (error) {
-      console.error('Error deleting relationship:', error);
     }
   };
 
@@ -564,53 +452,33 @@ const App = () => {
             </div>
             
             <div className="space-y-2">
-              {relationships.map((rel) => (
-                <div
-                  key={rel.relationship_id}
-                  className={`p-4 rounded-xl transition-all ${
-                    selectedRelationship?.relationship_id === rel.relationship_id
+              {relationships.map((rel, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setSelectedRelationship(rel);
+                    // start a new session for this partner context
+                    setSessionId(null);
+                    setMessages([]);
+                    setCurrentView('chat');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full p-4 rounded-xl text-left transition-all ${
+                    selectedRelationship?.partner_profile?.name === rel.partner_profile?.name
                       ? 'bg-gradient-to-r from-pink-100 to-purple-100 shadow-md'
                       : 'bg-pink-50 hover:bg-pink-100'
                   }`}
                 >
-                  <button
-                    onClick={() => {
-                      setSelectedRelationship(rel);
-                      // start a new session for this partner context
-                      setSessionId(null);
-                      setMessages([]);
-                      setCurrentView('chat');
-                      setSidebarOpen(false);
-                    }}
-                    className="w-full text-left"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full flex items-center justify-center">
-                        <Heart className="w-5 h-5 text-white fill-white" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-800">{rel.partner_profile?.name}</p>
-                        <p className="text-xs text-gray-600 capitalize">{rel.relationship_type}</p>
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full flex items-center justify-center">
+                      <Heart className="w-5 h-5 text-white fill-white" />
                     </div>
-                  </button>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => startEditRelationship(rel)}
-                      className="p-1 text-gray-500 hover:text-pink-600 transition-colors"
-                      title="Edit partner"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteRelationship(rel)}
-                      className="p-1 text-gray-500 hover:text-red-600 transition-colors"
-                      title="Delete partner"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-800">{rel.partner_profile?.name}</p>
+                      <p className="text-xs text-gray-600 capitalize">{rel.relationship_type}</p>
+                    </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -714,170 +582,6 @@ const App = () => {
           </div>
         </aside>
 
-        {/* Edit Relationship Modal */}
-        {editingRelationship && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <h3 className="text-xl font-semibold text-gray-800 mb-4">Edit Partner Profile</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
-                  <input
-                    type="text"
-                    value={editFormData.name}
-                    onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                    placeholder="Enter partner name"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Birthday</label>
-                  <input
-                    type="date"
-                    value={editFormData.birthday}
-                    onChange={(e) => setEditFormData({...editFormData, birthday: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Zodiac Sign</label>
-                  <select
-                    value={editFormData.zodiacSign}
-                    onChange={(e) => setEditFormData({...editFormData, zodiacSign: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                  >
-                    <option value="">Select Zodiac Sign</option>
-                    {['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'].map(sign => (
-                      <option key={sign} value={sign}>{sign}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Love Language</label>
-                  <select
-                    value={editFormData.loveLanguage}
-                    onChange={(e) => setEditFormData({...editFormData, loveLanguage: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                  >
-                    <option value="">Select Love Language</option>
-                    {['Words of Affirmation', 'Quality Time', 'Receiving Gifts', 'Acts of Service', 'Physical Touch'].map(lang => (
-                      <option key={lang} value={lang}>{lang}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Personality Type</label>
-                  <select
-                    value={editFormData.personalityType}
-                    onChange={(e) => setEditFormData({...editFormData, personalityType: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                  >
-                    <option value="">Select Personality Type</option>
-                    {['INTJ', 'INTP', 'ENTJ', 'ENTP', 'INFJ', 'INFP', 'ENFJ', 'ENFP', 'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ', 'ISTP', 'ISFP', 'ESTP', 'ESFP'].map(type => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Music Preferences</label>
-                  <input
-                    type="text"
-                    value={editFormData.musicPreferences}
-                    onChange={(e) => setEditFormData({...editFormData, musicPreferences: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                    placeholder="e.g., Pop, Rock, Jazz, Classical"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Religious Beliefs</label>
-                  <input
-                    type="text"
-                    value={editFormData.religiousBeliefs}
-                    onChange={(e) => setEditFormData({...editFormData, religiousBeliefs: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                    placeholder="e.g., Christian, Buddhist, Spiritual"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Ideal Vacations</label>
-                  <input
-                    type="text"
-                    value={editFormData.idealVacations}
-                    onChange={(e) => setEditFormData({...editFormData, idealVacations: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                    placeholder="e.g., Beach resorts, Mountain hiking, City tours"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Interests</label>
-                  <input
-                    type="text"
-                    value={editFormData.interests}
-                    onChange={(e) => setEditFormData({...editFormData, interests: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                    placeholder="Comma-separated interests"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Fashion Preferences</label>
-                  <input
-                    type="text"
-                    value={editFormData.fashionPreferences}
-                    onChange={(e) => setEditFormData({...editFormData, fashionPreferences: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                    placeholder="e.g., Casual, Formal, Trendy, Classic"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Dietary Restrictions</label>
-                  <input
-                    type="text"
-                    value={editFormData.dietaryRestrictions}
-                    onChange={(e) => setEditFormData({...editFormData, dietaryRestrictions: e.target.value})}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-400 focus:outline-none"
-                    placeholder="e.g., Vegetarian, Vegan, Gluten-free"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    saveEditRelationship();
-                  }}
-                  className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all"
-                >
-                  Save Changes
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setEditingRelationship(null);
-                    editingRelationshipRef.current = null; // Clear the ref
-                  }}
-                  className="flex-1 py-3 border-2 border-pink-300 text-pink-600 rounded-xl font-medium hover:bg-pink-50 transition-all"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Main Content */}
         <main className="flex-1 h-[calc(100vh-73px)] flex flex-col">
           {currentView === 'chat' ? (
@@ -920,8 +624,8 @@ const App = () => {
                         setAdvicePartner(rel||null);
                       }} className="w-full p-2 border rounded-lg">
                         <option value="">No partner</option>
-                        {relationships.map((r)=> (
-                          <option key={r.relationship_id} value={r.partner_profile?.name||''}>{r.partner_profile?.name||'Unknown'} ({r.relationship_type})</option>
+                        {relationships.map((r,i)=> (
+                          <option key={i} value={r.partner_profile?.name||''}>{r.partner_profile?.name||'Unknown'} ({r.relationship_type})</option>
                         ))}
                       </select>
                     </div>
@@ -1044,9 +748,9 @@ const App = () => {
                         { title: 'Communication', question: 'How can I communicate better with my partner?' },
                         { title: 'Date Ideas', question: 'What are some creative date ideas?' },
                         { title: 'Conflict', question: 'How do we resolve conflicts healthily?' }
-                      ].map((item) => (
+                      ].map((item, idx) => (
                         <button
-                          key={item.title}
+                          key={idx}
                           onClick={() => {
                             setInputMessage(item.question);
                           }}
@@ -1060,8 +764,8 @@ const App = () => {
                   </div>
                 ) : (
                   <>
-                    {messages.map((msg) => (
-                      <div key={msg.id || `${msg.role}-${msg.timestamp || Date.now()}-${Math.random()}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {messages.map((msg, idx) => (
+                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-2xl rounded-2xl px-6 py-4 ${
                           msg.role === 'user'
                             ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white'

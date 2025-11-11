@@ -137,7 +137,6 @@ class RelationshipProfile(BaseModel):
     user_id: str
     relationship_type: str
     partner_profile: PartnerProfile
-    relationship_id: Optional[str] = None  # Will be generated if not provided
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -533,69 +532,23 @@ async def create_relationship(
     db=Depends(get_database)
 ):
     """
-    Create a new relationship profile - allows multiple partners per relationship type
-    """
-    relationships_collection = db.relationships
-    
-    # Generate a unique relationship ID
-    relationship_id = str(ObjectId())
-    relationship_dict = relationship.dict()
-    relationship_dict["relationship_id"] = relationship_id
-    relationship_dict["created_at"] = datetime.utcnow()
-    relationship_dict["updated_at"] = datetime.utcnow()
-    
-    # Insert as a new relationship (no upsert)
-    await relationships_collection.insert_one(relationship_dict)
-    
-    return {"message": "Relationship profile saved successfully", "relationship_id": relationship_id}
-
-@app.put("/api/relationships/{relationship_id}", status_code=200)
-async def update_relationship(
-    relationship_id: str,
-    relationship: RelationshipProfile,
-    db=Depends(get_database)
-):
-    """
-    Update an existing relationship profile
+    Create or update a relationship profile
     """
     relationships_collection = db.relationships
     
     relationship_dict = relationship.dict()
     relationship_dict["updated_at"] = datetime.utcnow()
     
-    result = await relationships_collection.update_one(
+    await relationships_collection.update_one(
         {
-            "relationship_id": relationship_id,
-            "user_id": relationship.user_id
+            "user_id": relationship.user_id,
+            "relationship_type": relationship.relationship_type
         },
-        {"$set": relationship_dict}
+        {"$set": relationship_dict},
+        upsert=True
     )
     
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Relationship not found")
-    
-    return {"message": "Relationship profile updated successfully"}
-
-@app.delete("/api/relationships/{relationship_id}", status_code=200)
-async def delete_relationship(
-    relationship_id: str,
-    user_id: str,
-    db=Depends(get_database)
-):
-    """
-    Delete a relationship profile
-    """
-    relationships_collection = db.relationships
-    
-    result = await relationships_collection.delete_one({
-        "relationship_id": relationship_id,
-        "user_id": user_id
-    })
-    
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Relationship not found")
-    
-    return {"message": "Relationship profile deleted successfully"}
+    return {"message": "Relationship profile saved successfully"}
 
 @app.get("/api/relationships/{user_id}")
 async def get_relationships(user_id: str, db=Depends(get_database)):

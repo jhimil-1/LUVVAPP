@@ -241,7 +241,6 @@ const App = () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          relationship_id: rid,        // ← required by backend
           user_id: userId,
           relationship_type: relationshipToEdit.relationship_type,
           partner_profile: updatedProfile

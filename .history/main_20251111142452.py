@@ -137,7 +137,6 @@ class RelationshipProfile(BaseModel):
     user_id: str
     relationship_type: str
     partner_profile: PartnerProfile
-    relationship_id: Optional[str] = None  # Will be generated if not provided
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

@@ -158,12 +158,7 @@ const App = () => {
       const response = await fetch(`${API_BASE_URL}/api/relationships/${userId}`);
       if (response.ok) {
         const data = await response.json();
-        // Normalize: ensure every item has a stable id and relationship_id
-        const normalized = (data.relationships || []).map((rel) => {
-          const id = rel.relationship_id || rel.id || crypto.randomUUID();
-          return { ...rel, relationship_id: id, id };
-        });
-        setRelationships(normalized);
+        setRelationships(data.relationships || []);
       }
     } catch (error) {
       console.error('Error loading relationships:', error);
@@ -209,13 +204,6 @@ const App = () => {
       return;
     }
     
-    // Robust id: prefer relationship_id, fallback to id, guard against null
-    const rid = relationshipToEdit.relationship_id || relationshipToEdit.id;
-    if (!rid) {
-      console.error('Cannot save: no relationship id found', relationshipToEdit);
-      return;
-    }
-    
     console.log('Saving relationship:', relationshipToEdit);
     
     try {
@@ -237,11 +225,10 @@ const App = () => {
         }
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/relationships/${rid}`, {
+      const response = await fetch(`${API_BASE_URL}/api/relationships/${relationshipToEdit.relationship_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          relationship_id: rid,        // ← required by backend
           user_id: userId,
           relationship_type: relationshipToEdit.relationship_type,
           partner_profile: updatedProfile
@@ -261,23 +248,21 @@ const App = () => {
   };
 
   const deleteRelationship = async (relationship) => {
-    // Robust id: prefer relationship_id, fallback to id, guard against null
-    const rid = relationship?.relationship_id || relationship?.id;
-    if (!rid || !userId) return;
+    if (!relationship?.relationship_id || !userId) return;
     
     if (!window.confirm(`Are you sure you want to delete ${relationship.partner_profile?.name}?`)) {
       return;
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/relationships/${rid}`, {
+      const response = await fetch(`${API_BASE_URL}/api/relationships/${relationship.relationship_id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId })
       });
 
       if (response.ok) {
-        if (selectedRelationship?.relationship_id === rid || selectedRelationship?.id === rid) {
+        if (selectedRelationship?.relationship_id === relationship.relationship_id) {
           setSelectedRelationship(null);
         }
         await loadRelationships();
@@ -867,7 +852,6 @@ const App = () => {
                     e.preventDefault();
                     e.stopPropagation();
                     setEditingRelationship(null);
-                    editingRelationshipRef.current = null; // Clear the ref
                   }}
                   className="flex-1 py-3 border-2 border-pink-300 text-pink-600 rounded-xl font-medium hover:bg-pink-50 transition-all"
                 >
@@ -920,8 +904,8 @@ const App = () => {
                         setAdvicePartner(rel||null);
                       }} className="w-full p-2 border rounded-lg">
                         <option value="">No partner</option>
-                        {relationships.map((r)=> (
-                          <option key={r.relationship_id} value={r.partner_profile?.name||''}>{r.partner_profile?.name||'Unknown'} ({r.relationship_type})</option>
+                        {relationships.map((r,i)=> (
+                          <option key={i} value={r.partner_profile?.name||''}>{r.partner_profile?.name||'Unknown'} ({r.relationship_type})</option>
                         ))}
                       </select>
                     </div>
@@ -1044,9 +1028,9 @@ const App = () => {
                         { title: 'Communication', question: 'How can I communicate better with my partner?' },
                         { title: 'Date Ideas', question: 'What are some creative date ideas?' },
                         { title: 'Conflict', question: 'How do we resolve conflicts healthily?' }
-                      ].map((item) => (
+                      ].map((item, idx) => (
                         <button
-                          key={item.title}
+                          key={idx}
                           onClick={() => {
                             setInputMessage(item.question);
                           }}
@@ -1060,8 +1044,8 @@ const App = () => {
                   </div>
                 ) : (
                   <>
-                    {messages.map((msg) => (
-                      <div key={msg.id || `${msg.role}-${msg.timestamp || Date.now()}-${Math.random()}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {messages.map((msg, idx) => (
+                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-2xl rounded-2xl px-6 py-4 ${
                           msg.role === 'user'
                             ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white'

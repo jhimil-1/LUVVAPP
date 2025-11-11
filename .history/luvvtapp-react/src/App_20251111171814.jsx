@@ -209,13 +209,6 @@ const App = () => {
       return;
     }
     
-    // Robust id: prefer relationship_id, fallback to id, guard against null
-    const rid = relationshipToEdit.relationship_id || relationshipToEdit.id;
-    if (!rid) {
-      console.error('Cannot save: no relationship id found', relationshipToEdit);
-      return;
-    }
-    
     console.log('Saving relationship:', relationshipToEdit);
     
     try {
@@ -237,11 +230,10 @@ const App = () => {
         }
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/relationships/${rid}`, {
+      const response = await fetch(`${API_BASE_URL}/api/relationships/${relationshipToEdit.relationship_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          relationship_id: rid,        // ← required by backend
           user_id: userId,
           relationship_type: relationshipToEdit.relationship_type,
           partner_profile: updatedProfile
@@ -261,23 +253,21 @@ const App = () => {
   };
 
   const deleteRelationship = async (relationship) => {
-    // Robust id: prefer relationship_id, fallback to id, guard against null
-    const rid = relationship?.relationship_id || relationship?.id;
-    if (!rid || !userId) return;
+    if (!relationship?.relationship_id || !userId) return;
     
     if (!window.confirm(`Are you sure you want to delete ${relationship.partner_profile?.name}?`)) {
       return;
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/relationships/${rid}`, {
+      const response = await fetch(`${API_BASE_URL}/api/relationships/${relationship.relationship_id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId })
       });
 
       if (response.ok) {
-        if (selectedRelationship?.relationship_id === rid || selectedRelationship?.id === rid) {
+        if (selectedRelationship?.relationship_id === relationship.relationship_id) {
           setSelectedRelationship(null);
         }
         await loadRelationships();
