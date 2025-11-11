@@ -15,6 +15,7 @@ openai
 # Utilities
 pydantic
 python-dotenv
+bcrypt
 email-validator
 
 # Optional but recommended
